@@ -227,6 +227,7 @@ export default function App() {
   }, [activeOrders, selectedTable]);
 
   const fetchOrders = async () => {
+    if (!userData?.restaurantId) return;
     try {
       const res = await fetch(`${API_URL}/orders/open?rid=${userData.restaurantId}&t=${Date.now()}`, {
         headers: {
@@ -242,6 +243,7 @@ export default function App() {
   };
 
   const fetchProducts = async () => {
+    if (!userData?.restaurantId) return;
     try {
       const res = await fetch(`${API_URL}/products?rid=${userData.restaurantId}`);
       if (res.ok) {
@@ -285,6 +287,7 @@ export default function App() {
       const firstOrderCreatedAt = activeOrder ? (activeOrder.created_at || activeOrder.createdAt) : new Date().toISOString();
       const currentWaitTimeMs = activeOrder ? Math.max(0, Date.now() - new Date(firstOrderCreatedAt).getTime()) : 0;
       const currentWaitMinutes = Math.floor(currentWaitTimeMs / 60000);
+      const totalItem = (parseFloat(selectedProductToAdd.price) || 0) * (quantity || 1);
 
       // Atualização otimista completa na raiz (activeOrders)
       const newItem = {
