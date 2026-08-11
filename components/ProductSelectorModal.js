@@ -11,57 +11,44 @@ import {
     View
 } from 'react-native';
 
-const API_URL = "https://savora-6m9q.onrender.com";
 
-export const ProductSelectorModal = ({ isVisible, onClose, onSelectProduct, restaurantId }) => {
+
+export const ProductSelectorModal = ({ isVisible, onClose, onSelectProduct, products = [] }) => {
     const [categories, setCategories] = useState([]);
-    const [selectedCategory, setSelectedCategory] = useState('all');
-    const [products, setProducts] = useState([]);
+    const [selectedCategory, setSelectedCategory] = useState(null);
     const [filteredProducts, setFilteredProducts] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
-    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         if (isVisible) {
-            fetchData();
+            // Extrai categorias unicas baseadas nos produtos recebidos
+            const catsMap = new Map();
+            products.forEach(p => {
+                if (p.categoryId && p.category) {
+                    catsMap.set(p.categoryId, p.category.name);
+                }
+            });
+
+            const uniqueCats = Array.from(catsMap, ([id, name]) => ({ id, name }));
+            setCategories(uniqueCats);
+            setSearchTerm('');
+            setSelectedCategory(null);
         }
-    }, [isVisible]);
-
-    const fetchData = async () => {
-        if (!restaurantId) return;
-        setLoading(true);
-        try {
-            const res = await fetch(`${API_URL}/products?rid=${restaurantId}`);
-            if (res.ok) {
-                const prodData = await res.json();
-                setProducts(prodData || []);
-
-                // Extrai categorias unicas baseadas nos produtos
-                const catsMap = new Map();
-                prodData.forEach(p => {
-                    if (p.categoryId && p.category) {
-                        catsMap.set(p.categoryId, p.category.name);
-                    }
-                });
-
-                const uniqueCats = Array.from(catsMap, ([id, name]) => ({ id, name }));
-                setCategories([{ id: 'all', name: 'Todos' }, ...uniqueCats]);
-            }
-        } catch (error) {
-            console.error('Error fetching selector data:', error);
-        } finally {
-            setLoading(false);
-        }
-    };
+    }, [isVisible, products]);
 
     useEffect(() => {
         filterProducts();
     }, [searchTerm, selectedCategory, products]);
 
     const filterProducts = () => {
+        if (!selectedCategory && !searchTerm) {
+            setFilteredProducts([]);
+            return;
+        }
+
         let filtered = products;
 
-        if (selectedCategory !== 'all') {
+        if (selectedCategory) {
             filtered = filtered.filter(p => p.categoryId === selectedCategory);
         }
 
@@ -110,8 +97,10 @@ export const ProductSelectorModal = ({ isVisible, onClose, onSelectProduct, rest
                     <FlatList data={categories} renderItem={renderCategoryItem} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 15, gap: 10 }} />
                 </View>
 
-                {loading ? (
-                    <ActivityIndicator size="large" color="#5A18E6" style={{ marginTop: 50 }} />
+                {!selectedCategory && !searchTerm ? (
+                    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                        <Text style={{ color: '#888', fontSize: 16 }}>Selecione uma categoria acima</Text>
+                    </View>
                 ) : (
                     <FlatList data={filteredProducts} renderItem={renderProductItem} keyExtractor={item => item.id} contentContainerStyle={{ padding: 15 }} />
                 )}

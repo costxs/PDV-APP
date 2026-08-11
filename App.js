@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ActivityIndicator, Alert, FlatList, Image, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Image, Platform, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { CloseTableModal } from './components/CloseTableModal';
 import { ProductSelectorModal } from './components/ProductSelectorModal';
 import { QuantityModal } from './components/QuantityModal';
@@ -158,24 +158,8 @@ export default function App() {
 
       calculatedTips += openTips;
 
-      // 3. Tenta somar histórico adicional do Supabase se houver
-      try {
-        const { data: sbOrders } = await supabase
-          .from('orders')
-          .select('total, tip')
-          .eq('waiter_id', wId);
-        
-        if (sbOrders && sbOrders.length > 0) {
-          const sbTips = sbOrders.reduce((acc, curr) => {
-            const tipVal = parseFloat(curr.tip || 0);
-            if (tipVal > 0) return acc + tipVal;
-            return acc + (parseFloat(curr.total || 0) * 0.10);
-          }, 0);
-          calculatedTips = Math.max(calculatedTips, sbTips);
-        }
-      } catch (errSb) {
-        // bypass
-      }
+      // 3. (Removido) Chamada direta ao Supabase foi removida para evitar o erro 400
+      // Todo o cálculo de comissão agora depende da API Node (backend.sirotheau.com.br)
 
       setWaiterTipsTotal(calculatedTips);
     } catch (err) {
@@ -496,6 +480,91 @@ export default function App() {
     }
   };
 
+  const performDeletion = async (itemId) => {
+    try {
+      const res = await fetch(`${API_URL}/orders/items/${itemId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (!res.ok) {
+        let errMsg = 'Falha ao cancelar o item. Verifique a rota no servidor.';
+        try {
+          const errData = await res.json();
+          if (errData && errData.error) errMsg = errData.error;
+        } catch (e) {}
+        throw new Error(errMsg);
+      }
+      await fetchOrders();
+      if (Platform.OS === 'web') {
+        window.alert('Item cancelado com sucesso!');
+      } else {
+        Alert.alert('Sucesso', 'Item cancelado com sucesso!');
+      }
+    } catch (err) {
+      console.error(err);
+      if (Platform.OS === 'web') {
+        window.alert(err.message);
+      } else {
+        Alert.alert('Erro', err.message);
+      }
+    }
+  };
+
+  const handleDeleteItem = (itemId) => {
+    if (Platform.OS === 'web') {
+      const confirm = window.confirm('Tem certeza que deseja cancelar este item do pedido?');
+      if (confirm) {
+        performDeletion(itemId);
+      }
+    } else {
+      Alert.alert(
+        'Cancelar Item',
+        'Tem certeza que deseja cancelar este item do pedido?',
+        [
+          { text: 'Não', style: 'cancel' },
+          { text: 'Sim', style: 'destructive', onPress: () => performDeletion(itemId) }
+        ]
+      );
+    }
+  };
+
+  const handleCancelOrder = () => {
+    if (!activeOrder) return;
+    Alert.alert(
+      'Cancelar Pedido Inteiro',
+      'Tem certeza que deseja cancelar TODO o pedido? Esta ação excluirá a mesa.',
+      [
+        { text: 'Não', style: 'cancel' },
+        {
+          text: 'Sim, cancelar',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const res = await fetch(`${API_URL}/orders/${activeOrder.id}`, {
+                method: 'DELETE'
+              });
+              if (!res.ok) {
+                let errMsg = 'Falha ao cancelar o pedido.';
+                try {
+                  const errData = await res.json();
+                  if (errData && errData.error) errMsg = errData.error;
+                } catch (e) {}
+                throw new Error(errMsg);
+              }
+              setSelectedTable(null);
+              setActiveOrder(null);
+              await fetchOrders();
+              Alert.alert('Sucesso', 'Pedido excluído permanentemente!');
+            } catch (err) {
+              console.error(err);
+              Alert.alert('Erro', err.message);
+            }
+          }
+        }
+      ]
+    );
+  };
+
   const getTableStatus = (table) => {
     const order = activeOrders.find(o => o.tableNum === table.number);
     if (!order) return 'livre';
@@ -560,6 +629,9 @@ export default function App() {
               </View>
               <Text style={styles.detailsItemQty}>x{item.quantity}</Text>
               <Text style={styles.detailsItemPrice}>R$ {(item.price * item.quantity).toFixed(2)}</Text>
+              <TouchableOpacity onPress={() => handleDeleteItem(item.id)} style={{ marginLeft: 12 }}>
+                <Ionicons name="trash-outline" size={20} color="#ba1a1a" />
+              </TouchableOpacity>
             </View>
           ))}
         </ScrollView>
@@ -595,7 +667,7 @@ export default function App() {
         </View>
 
         <QuantityModal isVisible={isQuantityModalVisible} product={selectedProductToAdd} onConfirm={handleConfirmAddProduct} onCancel={() => setIsQuantityModalVisible(false)} />
-        <ProductSelectorModal isVisible={isProductSelectorVisible} onClose={() => setIsProductSelectorVisible(false)} onSelectProduct={openAddModal} restaurantId={userData?.restaurantId} />
+        <ProductSelectorModal isVisible={isProductSelectorVisible} onClose={() => setIsProductSelectorVisible(false)} onSelectProduct={openAddModal} products={products} />
         {isCloseModalVisible && (
           <View style={[StyleSheet.absoluteFill, { zIndex: 9999, backgroundColor: 'rgba(0,0,0,0.5)' }]}>
             <CloseTableModal visible={isCloseModalVisible} onClose={() => setIsCloseModalVisible(false)} order={activeOrder} orderItems={orderItems} tableNum={selectedTable.number} onConfirm={handleConfirmClose} onPartialPayment={handlePartialPayment} />
@@ -626,7 +698,14 @@ export default function App() {
       });
 
       if (!res.ok) {
-        Alert.alert('Acesso Negado', 'Usuário, senha ou restaurante incorretos.');
+        let errorMsg = 'Usuário, senha ou restaurante incorretos.';
+        try {
+          const errData = await res.json();
+          if (errData && errData.error) {
+            errorMsg = errData.error;
+          }
+        } catch (_) {}
+        Alert.alert('Acesso Negado', errorMsg);
         return;
       }
 
@@ -696,7 +775,7 @@ export default function App() {
               onChangeText={(text) => setLoginData({ ...loginData, restaurantCode: text })}
               onFocus={() => setFocusedInput('restaurantCode')}
               onBlur={() => setFocusedInput(null)}
-              autoCapitalize="characters"
+              autoCapitalize="none"
             />
           </View>
 
@@ -1143,6 +1222,8 @@ const styles = StyleSheet.create({
   detailsFooterTotalValue: { color: '#131b2e', fontSize: 32, fontWeight: 'bold', marginBottom: 15 },
   detailsCloseBtn: { backgroundColor: '#630ed4', height: 50, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
   detailsCloseBtnText: { fontWeight: 'bold', fontSize: 16, color: '#ffffff' },
+  detailsCancelBtn: { backgroundColor: '#ffe5e5', height: 50, borderRadius: 8, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#ffb3b3' },
+  detailsCancelBtnText: { fontWeight: 'bold', fontSize: 16, color: '#ba1a1a' },
   detailsBreakdownRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
   detailsBreakdownLabel: { fontSize: 14, color: '#5c5f61', fontWeight: '500' },
   detailsBreakdownValue: { fontSize: 14, color: '#131b2e', fontWeight: '600' },
