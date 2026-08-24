@@ -7,7 +7,7 @@
     "icon": "./assets/images/savora-logo-square.png",
     "scheme": "pdvapp",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": false,
+    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true
     },

@@ -7,7 +7,7 @@ import { ProductSelectorModal } from './components/ProductSelectorModal';
 import { QuantityModal } from './components/QuantityModal';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
 import { supabase } from './supabase';
-const API_URL = "https://backend.sirotheau.com.br";
+const API_URL = "https://savora-6m9q.onrender.com";
 
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -565,6 +565,26 @@ export default function App() {
     );
   };
 
+  const handleReprintKitchen = async (orderId, tableNum) => {
+    try {
+      const res = await fetch(`${API_URL}/print-requests`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tableNum: tableNum,
+          orderId: orderId,
+          type: 'kitchen'
+        })
+      });
+      if (!res.ok) throw new Error('Falha ao enviar requisição');
+      Alert.alert('Sucesso', 'Reimpressão solicitada para a cozinha!');
+    } catch (err) {
+      console.error(err);
+      Alert.alert('Erro', 'Falha ao solicitar reimpressão.');
+    }
+  };
+
+
   const getTableStatus = (table) => {
     const order = activeOrders.find(o => o.tableNum === table.number);
     if (!order) return 'livre';
@@ -1057,10 +1077,62 @@ export default function App() {
       )}
 
       {activeTab === 'orders' && (
-        <View style={styles.placeholderTabContainer}>
-          <Ionicons name="receipt-outline" size={48} color="#7c3aed" />
-          <Text style={styles.placeholderTabTitle}>Pedidos</Text>
-          <Text style={styles.placeholderTabSubtitle}>Gerenciamento de pedidos em andamento.</Text>
+        <View style={{ flex: 1, backgroundColor: '#faf8ff' }}>
+          <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 10 }}>
+            <Text style={{ fontSize: 24, fontWeight: '700', color: '#131b2e' }}>Meus Pedidos Abertos</Text>
+          </View>
+          <FlatList
+            data={activeOrders.filter(o => String(o.waiterId || o.waiter_id) === String(userData?.id || userData?.userId))}
+            keyExtractor={item => item.id.toString()}
+            contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 120 }}
+            ListEmptyComponent={
+              <View style={styles.placeholderTabContainer}>
+                <Ionicons name="receipt-outline" size={48} color="#ccc3d8" />
+                <Text style={styles.placeholderTabSubtitle}>Você não tem nenhum pedido aberto no momento.</Text>
+              </View>
+            }
+            renderItem={({ item }) => (
+              <View style={{ backgroundColor: '#ffffff', borderRadius: 16, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: '#e2e8f0' }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <View>
+                    <Text style={{ fontSize: 18, fontWeight: '700', color: '#630ed4' }}>Mesa {item.tableNum}</Text>
+                    <Text style={{ fontSize: 13, color: '#5c5f61', marginTop: 2 }}>
+                      {item.clientName || 'Cliente'} • {getElapsedTime(item)}
+                    </Text>
+                  </View>
+                  <Text style={{ fontSize: 16, fontWeight: '700', color: '#131b2e' }}>
+                    R$ {parseFloat(item.total || 0).toFixed(2).replace('.', ',')}
+                  </Text>
+                </View>
+                
+                <View style={{ height: 1, backgroundColor: '#f2f3ff', marginBottom: 12 }} />
+                
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
+                  <TouchableOpacity 
+                    style={{ flex: 1, backgroundColor: '#f2f3ff', borderRadius: 8, paddingVertical: 10, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' }}
+                    onPress={() => {
+                      const table = allTables.find(t => t.number === item.tableNum);
+                      if (table) {
+                        selectMainTable(table);
+                        setActiveTab('tables');
+                      }
+                    }}
+                  >
+                    <Ionicons name="eye-outline" size={16} color="#630ed4" style={{ marginRight: 6 }} />
+                    <Text style={{ color: '#630ed4', fontWeight: '600', fontSize: 13 }}>Ver Detalhes</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity 
+                    style={{ flex: 1, backgroundColor: '#ffe5e5', borderRadius: 8, paddingVertical: 10, alignItems: 'center', flexDirection: 'row', justifyContent: 'center' }}
+                    onPress={() => handleReprintKitchen(item.id, item.tableNum)}
+                  >
+                    <Ionicons name="print-outline" size={16} color="#ba1a1a" style={{ marginRight: 6 }} />
+                    <Text style={{ color: '#ba1a1a', fontWeight: '600', fontSize: 13 }}>Reimprimir</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+          />
         </View>
       )}
 
